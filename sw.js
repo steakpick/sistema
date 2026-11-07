@@ -1,7 +1,7 @@
 // Offline cache: the app's own files network-first (so updates arrive), fonts cache-first.
-const C = 'sistema-v9';
+const C = 'sistema-v10';
 const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png',
-  'src/main.js', 'src/game.js', 'src/i18n.js', 'src/en.js', 'src/store.js', 'src/sound.js', 'src/fx.js', 'src/sync.js', 'src/setup.js'];
+  'src/main.js', 'src/game.js', 'src/i18n.js', 'src/en.js', 'src/store.js', 'src/sound.js', 'src/fx.js', 'src/sync.js', 'src/setup.js', 'src/progress.js'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(C).then((c) => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => {

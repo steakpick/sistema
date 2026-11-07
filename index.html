@@ -41,13 +41,14 @@
         <div class="meter"><span>HP</span><div class="bar hp"><i id="hpbar"></i></div><em id="hptxt"></em></div>
       </div>
       <div class="mini">
-        <div><b id="streak">0</b><span>серия дней</span></div>
+        <div><b id="streak">0</b><span>серия дней</span><i class="shield-ind" id="shield-ind" hidden></i></div>
         <div><b id="best">0</b><span>рекорд</span></div>
         <div><b id="total">0</b><span>заданий</span></div>
       </div>
       <div class="sep"></div>
       <div class="stats" id="stats"></div>
       <div class="points">Свободные очки: <b id="pts">0</b></div>
+      <details class="other fx-wrap"><summary>Эффекты характеристик</summary><div id="fxl"></div></details>
     </div>
 
     <div class="win">
@@ -55,9 +56,22 @@
       <div class="skills" id="skills"></div>
       <button class="btn ghost" type="button" data-act="new-skill">+ Новый навык</button>
     </div>
+
+    <div class="win gold">
+      <div class="win-title">ДОСТИЖЕНИЯ</div>
+      <div id="ach"></div>
+    </div>
   </section>
 
   <section class="view" id="v-quests" hidden>
+    <div class="win tmr-win" id="timer" hidden>
+      <div class="win-title">ТАЙМЕР</div>
+      <div class="tmr-name" id="tm-name"></div>
+      <div class="tmr-clock" id="tm-clock">00:00</div>
+      <div class="bar"><i id="tm-bar"></i></div>
+      <div class="actions"><button class="btn sm" type="button" id="tm-stop">Стоп</button><button class="btn" type="button" id="tm-pause">Пауза</button></div>
+      <p class="hint">Каждая минута засчитывается в цель. Экран не гаснет, пока идёт таймер.</p>
+    </div>
     <div class="win alert pen" id="pen" hidden>
       <div class="win-title">ШТРАФНАЯ ЗОНА</div>
       <div class="q-head"><strong id="pen-task"></strong>Вы провалили ежедневное задание. Выполните штраф до конца дня.</div>
@@ -79,6 +93,12 @@
       <div id="quests"></div>
       <button class="btn ghost" type="button" data-act="new-quest">+ Новое задание</button>
     </div>
+
+    <div class="win violet">
+      <div class="win-title">ПОДЗЕМЕЛЬЯ</div>
+      <div id="dungeons"></div>
+      <button class="btn ghost" type="button" data-act="new-dungeon">+ Новое подземелье</button>
+    </div>
     <p class="hint">Нажмите на название, чтобы изменить или удалить.</p>
   </section>
 
@@ -87,12 +107,25 @@
       <div class="win-title">МАГАЗИН</div>
       <div class="purse"><b id="shop-gold">0</b><span>золота</span></div>
       <p class="hint">Золото даётся за задания. Награды настоящие: придумайте, чем себя порадовать.</p>
+      <div id="shield-card"></div>
       <div id="rewards"></div>
       <button class="btn ghost" type="button" data-act="new-reward">+ Новая награда</button>
     </div>
   </section>
 
   <section class="view" id="v-log" hidden>
+    <div class="win">
+      <div class="win-title">НЕДЕЛЯ</div>
+      <div id="week"></div>
+    </div>
+    <div class="win">
+      <div class="win-title">КАЛЕНДАРЬ</div>
+      <div id="cal"></div>
+    </div>
+    <div class="win">
+      <div class="win-title">ЦЕЛИ ПО ДНЯМ</div>
+      <div id="gstat"></div>
+    </div>
     <div class="win">
       <div class="win-title">ЖУРНАЛ</div>
       <div class="log" id="log"></div>

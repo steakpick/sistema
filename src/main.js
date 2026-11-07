@@ -6,6 +6,7 @@ import { sfx, haptic, installUnlock, setSoundCheck } from './sound.js';
 import { RM, floatText, burst, flash, shake, setNum, changed, typeText } from './fx.js';
 import * as Sync from './sync.js';
 import { openSetup } from './setup.js';
+import * as P from './progress.js';
 
 const { STATS, TITLES, RANKS, DIFF, DAYS, ALL_DAYS, PENALTY } = G;
 const $ = (id) => document.getElementById(id);
@@ -66,22 +67,28 @@ function goalRow(g, active) {
   const fl = justDone.has(g.id); justDone.delete(g.id);
   return `<div class="goal${done ? ' done' : ''}${active ? '' : ' off'}${fl ? ' flash' : ''}"><button class="t" type="button" data-act="edit-goal" data-id="${g.id}">${esc(g.t)}${days}</button>` +
     (active
-      ? `<span class="n">${c}/${g.max}${esc(g.unit)}</span><button class="btn sm" data-act="goal-minus" data-id="${g.id}" type="button" aria-label="${F('Отменить: {0}', esc(g.t))}" ${c ? '' : 'disabled'}>−</button><button class="btn ok" data-act="goal-plus" data-id="${g.id}" type="button" ${done ? 'disabled' : ''}>${done ? '✓' : '+' + g.step}</button>`
+      ? `<span class="n">${c}/${g.max}${esc(g.unit)}</span>${isMin(g) && !done ? `<button class="btn sm tmr${S.timer && S.timer.id === g.id ? ' on' : ''}" data-act="timer" data-id="${g.id}" type="button" aria-label="${F('Таймер: {0}', esc(g.t))}">⏱</button>` : ''}<button class="btn sm" data-act="goal-minus" data-id="${g.id}" type="button" aria-label="${F('Отменить: {0}', esc(g.t))}" ${c ? '' : 'disabled'}>−</button><button class="btn ok" data-act="goal-plus" data-id="${g.id}" type="button" ${done ? 'disabled' : ''}>${done ? '✓' : '+' + g.step}</button>`
       : `<span class="n">${g.max}${esc(g.unit)}</span>`) + '</div>';
 }
+const isMin = (g) => /^(мин|min)\.?$/i.test(String(g.unit).trim());
 const empty = (t) => '<div class="empty">' + L(t) + '</div>';
 
+let gsGoal = null;
 function render() {
   const d = new Date();
+  G.applyStats(S); G.checkAch(S, ui);
   $('day').textContent = d.toLocaleDateString(LOC, { weekday: 'short', day: 'numeric', month: 'short' });
   setNum($('lvl'), 'lvl', S.level); $('name').textContent = S.name;
-  $('title').textContent = G.pick(TITLES, S.level); $('rank').textContent = G.pick(RANKS, S.level);
+  $('title').innerHTML = `<button class="lnk" type="button" data-act="pick-title">${esc(G.titleOf(S))} ▾</button>`; $('rank').textContent = G.pick(RANKS, S.level);
   setNum($('gold'), 'gold', S.gold); setNum($('shop-gold'), 'shop-gold', S.gold);
   $('xpbar').style.width = (S.xp / G.need(S.level) * 100) + '%'; $('xptxt').textContent = S.xp + '/' + G.need(S.level);
   $('hpbar').style.width = Math.max(0, S.hp / S.maxHp * 100) + '%'; $('hptxt').textContent = S.hp + '/' + S.maxHp;
   $('hpbar').parentNode.classList.toggle('low', S.hp / S.maxHp < 0.3);
   setNum($('streak'), 'streak', S.streak); setNum($('best'), 'best', S.best); setNum($('total'), 'total', S.total);
   setNum($('pts'), 'pts', S.points);
+  $('shield-ind').hidden = !S.shields; $('shield-ind').textContent = '🛡'.repeat(S.shields);
+  $('fxl').innerHTML = P.effectsHtml(S);
+  $('ach').innerHTML = P.achHtml(S);
   $('stats').innerHTML = Object.keys(STATS).map((k) => `<div class="stat"><span class="name">${STATS[k]}</span><span class="val${changed('st-' + k, S.stats[k]) ? ' bump' : ''}">${S.stats[k]}</span><button class="plus" data-act="stat" data-id="${k}" type="button" aria-label="${F('Добавить очко: {0}', STATS[k])}" ${S.points ? '' : 'hidden'}>+</button></div>`).join('');
   $('skills').innerHTML = S.skills.length ? S.skills.map((s) => `<button class="skill" type="button" data-act="edit-skill" data-id="${s.id}"><div class="row"><span>${esc(s.n)}</span><span>${F('ур. {0} · {1}%', s.lv, s.p)}</span></div><div class="bar sk"><i style="width:${s.p}%"></i></div></button>`).join('') : empty('Навыков пока нет. Добавьте то, что изучаете.');
 
@@ -99,12 +106,15 @@ function render() {
 
   const open = S.quests.filter((q) => !q.done), done = S.quests.filter((q) => q.done);
   $('quests').innerHTML = S.quests.length ? [...open, ...done].map((q) => {
-    const sk = q.skill && S.skills.find((s) => s.id === q.skill), D = DIFF[q.diff];
-    return `<div class="quest${q.done ? ' done' : ''}"><span class="tag ${q.type === 'study' ? 'study' : ''}">${q.type === 'study' ? L('УЧЁБА') : L('РАЗОВОЕ')} · ${D.n.toUpperCase()}</span><div class="top"><button class="qt" type="button" data-act="edit-quest" data-id="${q.id}">${esc(q.t)}</button><button class="btn ok" data-act="quest-done" data-id="${q.id}" type="button" ${q.done ? 'disabled' : ''}>${q.done ? '✓' : L('Готово')}</button></div><div class="reward">+${D.xp} EXP · +${D.g} ${L('золота')} · ${STATS[q.stat]} +1${sk ? ' · ' + esc(sk.n) + ' +25%' : ''}</div></div>`;
+    const sk = q.skill && S.skills.find((s) => s.id === q.skill), D = G.gains(S, DIFF[q.diff].xp, DIFF[q.diff].g, q.type === 'study' ? 'study' : undefined);
+    return `<div class="quest${q.done ? ' done' : ''}"><span class="tag ${q.type === 'study' ? 'study' : ''}">${q.type === 'study' ? L('УЧЁБА') : L('РАЗОВОЕ')} · ${DIFF[q.diff].n.toUpperCase()}</span><div class="top"><button class="qt" type="button" data-act="edit-quest" data-id="${q.id}">${esc(q.t)}</button><button class="btn ok" data-act="quest-done" data-id="${q.id}" type="button" ${q.done ? 'disabled' : ''}>${q.done ? '✓' : L('Готово')}</button></div><div class="reward">+${D.xp} EXP · +${D.g} ${L('золота')} · ${STATS[q.stat]} +1${sk ? ' · ' + esc(sk.n) + ' +25%' : ''}</div></div>`;
   }).join('') : empty('Заданий нет. Добавьте учёбу или разовое дело.');
+  $('dungeons').innerHTML = P.dungeonsHtml(S);
+  $('timer').hidden = !S.timer;
   $('qdot').hidden = !(S.penalty || (!S.claimed && tg.length));
 
-  $('rewards').innerHTML = S.rewards.length ? S.rewards.map((r) => `<div class="rw"><button class="t" type="button" data-act="edit-reward" data-id="${r.id}">${esc(r.t)}</button><span class="price">${r.price}</span><button class="btn" type="button" data-act="buy" data-id="${r.id}" ${S.gold >= r.price ? '' : 'disabled'}>${L('Купить')}</button></div>`).join('') : empty('Добавьте награды, ради которых стоит стараться.');
+  $('shield-card').innerHTML = P.shieldHtml(S);
+  $('rewards').innerHTML = S.rewards.length ? S.rewards.map((r) => { const p = G.priceOf(S, r.price); return `<div class="rw"><button class="t" type="button" data-act="edit-reward" data-id="${r.id}">${esc(r.t)}</button><span class="price">${p < r.price ? '<s>' + r.price + '</s> ' : ''}${p}</span><button class="btn" type="button" data-act="buy" data-id="${r.id}" ${S.gold >= p ? '' : 'disabled'}>${L('Купить')}</button></div>`; }).join('') : empty('Добавьте награды, ради которых стоит стараться.');
 
   let html = '', last = '';
   for (const e of S.log.slice(0, 80)) {
@@ -112,6 +122,9 @@ function render() {
     if (dk !== last) { html += `<div class="log-day">${dk.toUpperCase()}</div>`; last = dk; }
     html += `<div class="log-item ${e.kind}"><time>${pad(t.getHours())}:${pad(t.getMinutes())}</time><span>${esc(e.text)}</span></div>`;
   }
+  $('week').innerHTML = P.weekHtml(S, d);
+  $('cal').innerHTML = P.calendarHtml(S, d);
+  $('gstat').innerHTML = P.goalChartHtml(S, gsGoal, d);
   $('log').innerHTML = html || empty('Здесь появится история ваших действий.');
   save();
 }
@@ -183,7 +196,7 @@ function goalSheet(g) {
     if (ed) Object.assign(g, data); else { S.goals.push(Object.assign({ id: G.uid() }, data)); G.log(S, L('Новая ежедневная цель: ') + t); }
     closeSheet(); G.checkDaily(S, new Date(), ui); render();
   });
-  sheetActions.del = () => { S.goals = S.goals.filter((x) => x !== g); closeSheet(); G.checkDaily(S, new Date(), ui); render(); };
+  sheetActions.del = () => { S.goals = S.goals.filter((x) => x !== g); if (S.timer && S.timer.id === g.id) S.timer = null; closeSheet(); G.checkDaily(S, new Date(), ui); render(); };
 }
 function questSheet(q) {
   const ed = !!q; q = q || { t: '', type: 'study', diff: 'mid', stat: 'int', skill: '' };
@@ -228,6 +241,35 @@ function rewardSheet(r) {
     closeSheet(); render();
   });
   sheetActions.del = () => { S.rewards = S.rewards.filter((x) => x !== r); closeSheet(); render(); };
+}
+function dungeonSheet(d) {
+  const ed = !!d; d = d || { t: '', diff: 'normal', stat: 'int', stages: [] };
+  const lines = d.stages.map((x) => x.t).join('\n');
+  openSheet(`<h2>${ed ? L('ПОДЗЕМЕЛЬЕ') : L('НОВОЕ ПОДЗЕМЕЛЬЕ')}</h2><form class="form">
+    <div class="field"><label for="d-t">${L('Большая цель')}</label><input id="d-t" name="t" maxlength="60" value="${esc(d.t)}" placeholder="${L('Например: Сдать экзамен по английскому')}"></div>
+    <div class="field"><label for="d-st">${L('Этапы, по одному в строке. Последний: босс')}</label><textarea id="d-st" name="st" class="plain" placeholder="${L('Выучить 500 слов\nПройти 3 пробных теста\nСдать экзамен')}" ${ed && d.stages.some((x) => x.done) ? 'readonly' : ''}>${esc(lines)}</textarea></div>
+    <div class="field"><span class="lab">${L('Сложность (награда за босса)')}</span>${seg('diff', Object.keys(G.DUNGEON).map((k) => [k, G.DUNGEON[k].n + '<br><small>' + G.DUNGEON[k].xp + ' EXP · ' + G.DUNGEON[k].g + '</small>']), d.diff, 'style="grid-template-columns:1fr 1fr"')}</div>
+    <div class="field"><label for="d-stat">${L('Развивает (+2 за босса)')}</label><select id="d-stat" name="stat">${statOpts(d.stat)}</select></div>
+    ${actions(ed)}</form>`, (fd) => {
+    const t = fd.get('t').trim(), st = fd.get('st').split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 12);
+    if (!t) return err(L('Введите название.'));
+    if (st.length < 2) return err(L('Нужно хотя бы два этапа: путь и босс.'));
+    if (ed) {
+      Object.assign(d, { t, diff: fd.get('diff'), stat: fd.get('stat') });
+      if (!d.stages.some((x) => x.done)) d.stages = st.map((x) => ({ t: x, done: false }));
+    } else G.addDungeon(S, { t, stages: st, diff: fd.get('diff'), stat: fd.get('stat') });
+    closeSheet(); render();
+  });
+  sheetActions.del = () => { S.dungeons = S.dungeons.filter((x) => x !== d); closeSheet(); render(); };
+}
+function titleSheet() {
+  const got = G.ACH.filter((a) => S.ach[a[0]]);
+  openSheet(`<h2>${L('ТИТУЛ')}</h2><div class="form">
+    <p class="hint">${got.length ? L('Выберите титул из полученных достижений.') : L('Титулы открываются за достижения. Пока доступен титул по уровню.')}</p>
+    <div class="titles"><button type="button" class="su-rw" data-title="" aria-pressed="${!S.titleSel}"><span>${esc(G.pick(TITLES, S.level))}</span><b class="nb">${L('по уровню')}</b></button>
+    ${got.map((a) => `<button type="button" class="su-rw" data-title="${a[0]}" aria-pressed="${S.titleSel === a[0]}"><span>${esc(a[1])}</span><b class="nb">★</b></button>`).join('')}</div>
+    <button class="btn sm" type="button" data-close>${L('Закрыть')}</button></div>`, null);
+  $('sheet').querySelectorAll('[data-title]').forEach((b) => { b.onclick = () => { S.titleSel = b.dataset.title || null; sfx('tap'); haptic(); closeSheet(); render(); }; });
 }
 function settingsSheet() {
   openSheet(`<h2>${L('НАСТРОЙКИ')}</h2><form class="form">
@@ -397,6 +439,53 @@ document.addEventListener('visibilitychange', () => {
 });
 addEventListener('online', () => syncNow());
 
+/* ---------- timer for goals in minutes ---------- */
+let wake = null;
+async function keepAwake(on) {
+  try {
+    if (on && !wake && navigator.wakeLock && !document.hidden) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); }
+    else if (!on && wake) { const w = wake; wake = null; await w.release(); }
+  } catch (e) { /* not supported or refused */ }
+}
+const elapsed = (T) => T.acc + (T.run ? Date.now() - T.t0 : 0);
+function startTimer(id) {
+  if (S.timer && S.timer.id === id) { tab('quests'); document.querySelector('.app').scrollTop = 0; return; }
+  S.timer = { id, base: S.prog[id] || 0, acc: 0, t0: Date.now(), run: true };
+  sfx('note'); haptic(); keepAwake(true); render(); timerTick();
+  document.querySelector('.app').scrollTo({ top: 0, behavior: RM ? 'auto' : 'smooth' });
+}
+function timerTick() {
+  const T = S.timer; if (!T) return;
+  const g = S.goals.find((x) => x.id === T.id);
+  if (!g) { S.timer = null; keepAwake(false); render(); return; }
+  const el = elapsed(T), want = Math.min(g.max, T.base + Math.floor(el / 60000));
+  if (want > (S.prog[g.id] || 0)) { if (G.goalSet(S, g.id, want, new Date(), ui) === 'done') justDone.add(g.id); render(); }
+  if ((S.prog[g.id] || 0) >= g.max) {
+    S.timer = null; keepAwake(false); render();
+    notify({ title: L('ТАЙМЕР'), msg: F('Время вышло: {0}.', g.t), sub: L('Цель засчитана.') });
+    return;
+  }
+  const total = Math.max(1, (g.max - T.base) * 60000), left = Math.max(0, total - el), sec = Math.ceil(left / 1000);
+  $('tm-name').textContent = g.t + ' · ' + (S.prog[g.id] || 0) + '/' + g.max + g.unit;
+  $('tm-clock').textContent = pad(Math.floor(sec / 60)) + ':' + pad(sec % 60);
+  $('tm-clock').classList.toggle('paused', !T.run);
+  $('tm-bar').style.width = Math.min(100, (el / total) * 100) + '%';
+  $('tm-pause').textContent = T.run ? L('Пауза') : L('Продолжить');
+}
+$('tm-pause').onclick = () => {
+  const T = S.timer; if (!T) return;
+  if (T.run) { T.acc = elapsed(T); T.run = false; keepAwake(false); } else { T.t0 = Date.now(); T.run = true; keepAwake(true); }
+  sfx('tap'); haptic(); save(); timerTick();
+};
+$('tm-stop').onclick = () => {
+  const b = $('tm-stop');
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = L('Точно?'); setTimeout(() => { b.dataset.armed = ''; b.textContent = L('Стоп'); }, 2500); return; }
+  b.dataset.armed = ''; b.textContent = L('Стоп');
+  S.timer = null; keepAwake(false); render();
+};
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.timer && S.timer.run) { keepAwake(true); timerTick(); } });
+$('gstat').addEventListener('change', (e) => { if (e.target.id === 'gs-pick') { gsGoal = e.target.value; render(); } });
+
 /* ---------- actions ---------- */
 document.querySelector('.app').addEventListener('click', (e) => {
   const go = e.target.closest('[data-goto]'); if (go) { tab(go.dataset.goto); return; }
@@ -415,6 +504,21 @@ document.querySelector('.app').addEventListener('click', (e) => {
   else if (a === 'new-skill') skillSheet();
   else if (a === 'edit-reward') rewardSheet(S.rewards.find((x) => x.id === id));
   else if (a === 'new-reward') rewardSheet();
+  else if (a === 'timer') startTimer(id);
+  else if (a === 'pick-title') titleSheet();
+  else if (a === 'new-dungeon') dungeonSheet();
+  else if (a === 'edit-dungeon') dungeonSheet(S.dungeons.find((x) => x.id === id));
+  else if (a === 'buy-shield') { if (G.buyShield(S, ui)) { sfx('buy'); haptic(); render(); } }
+  else if (a === 'stage') {
+    if (!b.dataset.armed) {
+      b.dataset.armed = '1'; b.classList.add('armed'); b.textContent = '?'; sfx('tap');
+      setTimeout(() => { if (b.isConnected && b.dataset.armed) { b.dataset.armed = ''; b.classList.remove('armed'); render(); } }, 2500);
+      return;
+    }
+    const r = G.clearStage(S, id, +b.dataset.i, ui);
+    if (r === 'locked') { floatText(L('Сначала пройдите все этапы'), 'r'); shake(); render(); return; }
+    if (r) { sfx(r === 'boss' ? 'gold' : 'tap'); haptic(); render(); }
+  }
 });
 $('pen-done').addEventListener('click', (e) => {
   const b = e.currentTarget;
@@ -465,6 +569,7 @@ function tick() {
   let s = Math.floor((m - n) / 1000); const h = Math.floor(s / 3600); s %= 3600;
   const txt = pad(h) + ':' + pad(Math.floor(s / 60)) + ':' + pad(s % 60);
   $('clock').textContent = txt; $('pen-clock').textContent = txt;
+  if (S.timer) timerTick();
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 render(); tick(); setInterval(tick, 1000);
