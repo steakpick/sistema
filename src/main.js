@@ -5,6 +5,7 @@ import { loadLocal, saveLocal, KEY } from './store.js';
 import { sfx, haptic, installUnlock, setSoundCheck } from './sound.js';
 import { RM, floatText, burst, flash, shake, setNum, changed, typeText } from './fx.js';
 import * as Sync from './sync.js';
+import { openSetup } from './setup.js';
 
 const { STATS, TITLES, RANKS, DIFF, DAYS, ALL_DAYS, PENALTY } = G;
 const $ = (id) => document.getElementById(id);
@@ -94,7 +95,7 @@ function render() {
   $('other').innerHTML = other.map((g) => goalRow(g, false)).join('');
   const dw = $('daily'); dw.classList.toggle('alert', !S.claimed && !rest); dw.classList.toggle('cleared', S.claimed || rest);
   $('daily-sub').textContent = rest ? L('День отдыха') : L('Выполните все цели до конца дня');
-  $('warn').textContent = rest ? L('✓ Сегодня без обязательных целей') : S.claimed ? L('✓ Выполнено. Награда получена') : L('⚠ Невыполнение: −') + PENALTY + L(' HP и штрафная зона');
+  $('warn').textContent = rest ? L('✓ Сегодня без обязательных целей') : S.claimed ? L('✓ Выполнено. Награда получена') : S.grace === S.day ? L('Пробный день: штрафа не будет') : L('⚠ Невыполнение: −') + PENALTY + L(' HP и штрафная зона');
 
   const open = S.quests.filter((q) => !q.done), done = S.quests.filter((q) => q.done);
   $('quests').innerHTML = S.quests.length ? [...open, ...done].map((q) => {
@@ -131,6 +132,7 @@ function closeSheet() {
   if ($('sheet-bg').hidden) return;
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   sheetSubmit = null; document.documentElement.classList.remove('locked');
+  if (!S.welcomed) setTimeout(startSetup, 260);
   if (RM) { $('sheet-bg').hidden = true; $('sheet').innerHTML = ''; return; }
   $('sheet').classList.add('closing'); $('sheet-bg').classList.add('closing');
   setTimeout(() => {
@@ -233,6 +235,7 @@ function settingsSheet() {
     <div class="actions"><button class="btn" type="submit">${L('Сохранить имя')}</button></div>
     <div class="field"><span class="lab">${L('Язык / Language')}</span>${seg('lang', [['ru', 'Русский'], ['en', 'English']], LANG, 'id="lang" style="grid-template-columns:1fr 1fr"')}</div>
     <div class="field"><span class="lab">${L('Звуки Системы')}</span>${seg('snd', [['1', L('Включены')], ['0', L('Выключены')]], S.sound ? '1' : '0', 'id="snd" style="grid-template-columns:1fr 1fr"')}</div>
+    <button class="btn ghost" type="button" id="st-packs">${L('+ Добавить готовые цели')}</button>
     <div class="sep"></div>
     <div class="field" id="cloud-box">${cloudHtml()}</div>
     <div class="sep"></div>
@@ -246,6 +249,7 @@ function settingsSheet() {
   });
   $('lang').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b || b.dataset.seg === LANG) return; setLang(b.dataset.seg); save(); location.reload(); });
   wireCloud();
+  $('st-packs').onclick = () => { closeSheet(); setTimeout(addPacksFlow, 240); };
   $('snd').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.sound = b.dataset.seg === '1'; save(); if (S.sound) sfx('note'); });
   $('bk-copy').onclick = async () => {
     const ta = $('st-bk'); ta.value = JSON.stringify(S);
@@ -258,7 +262,30 @@ function settingsSheet() {
     if (!d) return err(L('Не получилось: вставьте полный текст копии.'));
     S = d; closeSheet(); render(); notify({ title: L('УВЕДОМЛЕНИЕ'), msg: L('Прогресс восстановлен.') });
   };
-  sheetActions.wipe = () => { S = G.fresh(); S.welcomed = true; G.log(S, L('Начат новый путь')); closeSheet(); render(); tab('status'); };
+  sheetActions.wipe = () => { S = G.fresh(); G.log(S, L('Начат новый путь')); render(); tab('status'); closeSheet(); };
+}
+
+/* ---------- first launch ---------- */
+function startSetup() {
+  if (S.welcomed || !$('setup').hidden || booting) return;
+  openSetup({
+    S,
+    onDone(c) {
+      G.applySetup(S, c); render(); tab('quests', true);
+      notify({ gold: true, burst: true, title: L('СИСТЕМА АКТИВИРОВАНА'), msg: F('Добро пожаловать, {0}.', S.name), sub: L('Выполняйте ежедневное задание, чтобы не попасть в штрафную зону.\nЗа задания вы получаете опыт и золото.\nЗадания, цели, награды и навыки можно менять под себя.') });
+    },
+    onSignIn(c) { if (c.name && c.name !== L('Игрок')) S.name = c.name; render(); settingsSheet(); setTimeout(() => { const e = $('cl-email'); if (e) { e.scrollIntoView({ block: 'center' }); e.focus(); } }, 320); },
+  });
+}
+function addPacksFlow() {
+  openSetup({
+    S, add: true,
+    onDone(c) {
+      const n = G.addPacks(S, c.packs, c.mode); G.log(S, F('Добавлены готовые цели: {0}', n));
+      G.checkDaily(S, new Date(), ui); render(); tab('quests', true);
+      notify({ title: L('УВЕДОМЛЕНИЕ'), msg: F('Добавлено целей: {0}.', n), sub: L('Их можно изменить, нажав на название.') });
+    },
+  });
 }
 
 /* ---------- cloud ---------- */
@@ -336,7 +363,7 @@ function cloudError(e) {
   if (c === 'invalid_credentials') return L('Неверная почта или пароль.');
   if (c === 'user_already_exists' || c === 'email_exists') return L('Такой аккаунт уже есть. Нажмите «Войти».');
   if (c === 'weak_password') return L('Пароль слишком простой: нужно не меньше 6 символов.');
-  if (c === 'email_not_confirmed') return L('Аккаунт ждёт подтверждения почты. Выключите Confirm email в настройках Supabase.');
+  if (c === 'email_not_confirmed') return L('Подтвердите почту: откройте письмо от Supabase, нажмите ссылку, затем «Войти».');
   if (c === 'email_address_invalid' || c === 'validation_failed') return L('Проверьте адрес почты.');
   return L('Не получилось: ') + (e && (e.message || c));
 }
@@ -440,10 +467,6 @@ function tick() {
   $('clock').textContent = txt; $('pen-clock').textContent = txt;
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
-if (!S.welcomed) {
-  S.welcomed = true; G.log(S, L('Система активирована'), 'gold');
-  notify({ gold: true, title: L('СИСТЕМА АКТИВИРОВАНА'), msg: L('Вы получили доступ к Системе развития.'), sub: L('Выполняйте ежедневное задание, чтобы не попасть в штрафную зону.\nЗа задания вы получаете опыт и золото.\nЗадания, цели, награды и навыки можно менять под себя.') });
-}
 render(); tick(); setInterval(tick, 1000);
 (function boot() {
   const b = $('boot');
@@ -452,10 +475,11 @@ render(); tick(); setInterval(tick, 1000);
     b.classList.add('out'); setTimeout(() => { b.hidden = true; }, 460);
     $('v-' + curTab).classList.add('enter');
     if (queue.length && !showing) setTimeout(nextNote, 250);
+    setTimeout(startSetup, 200);
   };
-  if (RM) { b.hidden = true; booting = false; if (queue.length) nextNote(); return; }
+  if (RM) { b.hidden = true; booting = false; if (queue.length) nextNote(); startSetup(); return; }
   b.hidden = false;
-  const lines = [L('Синхронизация данных…'), L('Проверка состояния игрока…'), L('Добро пожаловать, ') + S.name + '.'];
+  const lines = [L('Синхронизация данных…'), L('Проверка состояния игрока…'), (S.welcomed ? L('Добро пожаловать, ') + S.name + '.' : L('Обнаружен новый игрок…'))];
   lines.forEach((l, i) => setTimeout(() => { $('boot-line').textContent = l; }, i * 330));
   b.addEventListener('click', done); setTimeout(done, 1150);
 })();

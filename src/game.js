@@ -99,7 +99,7 @@ export function missedDays(S, now) {
   const today = dayKey(now);
   let missed = 0;
   const prev = keyDate(S.day);
-  if (goalsFor(S, prev).length && !S.claimed) missed = 1;
+  if (goalsFor(S, prev).length && !S.claimed && S.grace !== S.day) missed = 1; // the setup day is a free trial
   const d = new Date(prev); d.setDate(d.getDate() + 1);
   for (let i = 0; dayKey(d) !== today && i < MAX_MISSED; i++) {
     if (goalsFor(S, d).length) missed++;
@@ -206,4 +206,88 @@ export function clearPenalty(S, ui = NOOP) {
   S.penalty = null;
   ui.notify({ title: L('ШТРАФНАЯ ЗОНА ПРОЙДЕНА'), msg: L('Вы вернулись.'), sub: L('Опыт и золото снова начисляются.\nНе подводите Систему.') });
   return true;
+}
+
+/* ---------- first-launch setup ---------- */
+const WEEKDAYS = [1, 2, 3, 4, 5];
+// goal: [name, per day, step, unit, stat, days?]; quest: [name, difficulty, stat, linked to the pack's skill?]
+export const PACKS = [
+  { id: 'body', icon: '⚔', n: L('Тело'), d: L('Сила и выносливость'),
+    goals: [[L('Отжимания'), 30, 10, '', 'str'], [L('Приседания'), 40, 10, '', 'end'], [L('Планка'), 2, 1, L(' мин'), 'end']],
+    quests: [[L('Пробежать 3 км без остановки'), 'hard', 'agi']] },
+  { id: 'mind', icon: '◈', n: L('Ум'), d: L('Чтение и новые знания'),
+    goals: [[L('Чтение'), 20, 5, L(' мин'), 'int']],
+    quests: [[L('Дочитать книгу до конца'), 'hard', 'int']] },
+  { id: 'lang', icon: '✎', n: L('Языки'), d: L('Иностранный язык каждый будний день'), skill: L('Английский язык'),
+    goals: [[L('Английский'), 15, 5, L(' мин'), 'int', WEEKDAYS]],
+    quests: [[L('Выучить 20 новых английских слов'), 'mid', 'int', true]] },
+  { id: 'study', icon: '▣', n: L('Учёба'), d: L('Сосредоточенная работа без телефона'), skill: L('Учёба'),
+    goals: [[L('Учёба без телефона'), 60, 15, L(' мин'), 'int', WEEKDAYS]],
+    quests: [[L('Разобрать одну сложную тему'), 'mid', 'int', true]] },
+  { id: 'health', icon: '✚', n: L('Здоровье'), d: L('Вода, шаги и сон'),
+    goals: [[L('Вода'), 8, 1, L(' стак.'), 'end'], [L('Шаги'), 6000, 2000, '', 'agi']],
+    quests: [[L('Лечь спать до 23:00 пять дней подряд'), 'hard', 'dis']] },
+  { id: 'disc', icon: '⛨', n: L('Дисциплина'), d: L('Режим и меньше телефона'),
+    goals: [[L('Подъём с первого будильника'), 1, 1, '', 'dis'], [L('Без соцсетей до обеда'), 1, 1, '', 'dis']],
+    quests: [[L('Убрать рабочее место'), 'easy', 'dis']] },
+  { id: 'calm', icon: '☯', n: L('Спокойствие'), d: L('Медитация и дневник'),
+    goals: [[L('Медитация'), 10, 5, L(' мин'), 'dis'], [L('Дневник'), 1, 1, '', 'cha']],
+    quests: [[L('Позвонить близкому человеку'), 'easy', 'cha']] },
+];
+export const MODES = {
+  soft: { n: L('Мягкий старт'), d: L('Половина нагрузки, выходные свободны'), k: 0.5 },
+  normal: { n: L('Обычный'), d: L('Полная нагрузка каждый день'), k: 1 },
+  hard: { n: L('Жёсткий'), d: L('В полтора раза больше. Для тех, кто готов'), k: 1.5 },
+};
+export const REWARD_PRESETS = [
+  [L('Сладкое или любимый перекус'), 100],
+  [L('Серия любимого сериала'), 150],
+  [L('Кофе в кофейне'), 200],
+  [L('1 час игр'), 300],
+  [L('Поход в кино'), 600],
+  [L('Заказать любимую еду'), 800],
+  [L('Новая вещь для себя'), 2000],
+];
+
+/** Scale a daily amount for the chosen mode, keeping it a whole number of steps. */
+export function scaleGoal(max, step, k) {
+  if (max <= 1) return { max, step };
+  const s = Math.max(1, Math.min(step, Math.round(step * Math.min(1, k)) || 1));
+  return { max: Math.max(s, Math.round((max * k) / s) * s), step: s };
+}
+
+/** Add the chosen packs to the state; goals whose name already exists are skipped. Returns how many goals were added. */
+export function addPacks(S, ids, mode = 'normal') {
+  const m = MODES[mode] || MODES.normal;
+  let added = 0;
+  for (const p of PACKS.filter((x) => ids.includes(x.id))) {
+    let skill = null;
+    if (p.skill) {
+      skill = S.skills.find((s) => s.n === p.skill);
+      if (!skill) { skill = { id: uid(), n: p.skill, lv: 1, p: 0 }; S.skills.push(skill); }
+    }
+    for (const [t, max, step, unit, stat, days] of p.goals) {
+      if (S.goals.some((g) => g.t === t)) continue;
+      let d = (days || ALL_DAYS).slice();
+      if (mode === 'soft') d = d.filter((x) => x !== 0 && x !== 6);
+      S.goals.push(Object.assign({ id: uid(), t, unit, stat, days: d }, scaleGoal(max, step, m.k)));
+      added++;
+    }
+    for (const [t, diff, stat, linked] of p.quests || []) {
+      if (S.quests.some((q) => q.t === t)) continue;
+      S.quests.push({ id: uid(), type: linked || stat === 'int' ? 'study' : 'once', t, diff, stat, skill: linked && skill ? skill.id : null, done: false });
+    }
+  }
+  return added;
+}
+
+/** Build a new player's lists from the first-launch choices. */
+export function applySetup(S, { name, packs, mode = 'normal', rewards = [] }) {
+  if (name && name.trim()) S.name = name.trim().slice(0, 24);
+  S.goals = []; S.skills = []; S.quests = []; S.prog = {}; S.hit = {}; S.claimed = false;
+  addPacks(S, packs, mode);
+  S.rewards = rewards.filter((i) => REWARD_PRESETS[i]).map((i) => ({ id: uid(), t: REWARD_PRESETS[i][0], price: REWARD_PRESETS[i][1] }));
+  S.mode = mode; S.welcomed = true; S.grace = S.day;
+  log(S, L('Система активирована'), 'gold');
+  return S;
 }
