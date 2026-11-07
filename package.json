@@ -1,0 +1,9 @@
+{
+  "name": "sistema",
+  "private": true,
+  "type": "module",
+  "description": "Личное приложение саморазвития в стиле «Системы»",
+  "scripts": {
+    "test": "TZ=Europe/Chisinau node --test tests/*.test.js"
+  }
+}
