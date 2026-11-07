@@ -1,5 +1,5 @@
 // Offline cache: the app's own files network-first (so updates arrive), fonts cache-first.
-const C = 'sistema-v7';
+const C = 'sistema-v8';
 const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png',
   'src/main.js', 'src/game.js', 'src/i18n.js', 'src/en.js', 'src/store.js', 'src/sound.js', 'src/fx.js'];
 

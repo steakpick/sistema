@@ -323,17 +323,20 @@ function cloudHtml() {
     <p class="hint left">${L('Вход выполнен: ')}<b>${esc(u.email)}</b><br><span id="cl-status">${cloudStatusText()}</span></p>
     <div class="actions"><button class="btn sm" type="button" id="cl-sync">${L('Синхронизировать')}</button><button class="btn sm" type="button" id="cl-out">${L('Выйти')}</button></div>`;
   return `<label for="cl-email">${L('Облачное сохранение')}</label>
-    <p class="hint left">${L('Войдите по почте, и прогресс не пропадёт при удалении приложения или смене телефона. Пароль не нужен: мы пришлём код.')}</p>
-    <input id="cl-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com">
-    <button class="btn" type="button" id="cl-send">${L('Получить код')}</button>
-    <div id="cl-code-wrap" class="form" hidden><input id="cl-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="${L('Код из письма')}"><button class="btn" type="button" id="cl-verify">${L('Войти')}</button></div>
+    <p class="hint left">${L('Войдите, и прогресс не пропадёт при удалении приложения или смене телефона. Первый раз нажмите «Создать аккаунт».')}</p>
+    <input id="cl-email" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="you@example.com">
+    <input id="cl-pass" type="password" autocomplete="current-password" minlength="6" placeholder="${L('Пароль (не меньше 6 символов)')}">
+    <div class="actions"><button class="btn sm" type="button" id="cl-new">${L('Создать аккаунт')}</button><button class="btn" type="button" id="cl-in">${L('Войти')}</button></div>
     <div class="err" id="cl-err"></div>`;
 }
 function cloudError(e) {
   const c = e && e.code;
   if (c === 'offline') return L('Нет связи с интернетом.');
-  if (c === 'rate_limit' || c === 'over_email_send_rate_limit') return L('Слишком много писем подряд. Подождите немного и попробуйте снова.');
-  if (c === 'otp_expired' || c === 'invalid_credentials' || c === 'http_403') return L('Неверный или устаревший код. Запросите новый.');
+  if (c === 'rate_limit' || c === 'over_request_rate_limit') return L('Слишком много попыток подряд. Подождите немного и попробуйте снова.');
+  if (c === 'invalid_credentials') return L('Неверная почта или пароль.');
+  if (c === 'user_already_exists' || c === 'email_exists') return L('Такой аккаунт уже есть. Нажмите «Войти».');
+  if (c === 'weak_password') return L('Пароль слишком простой: нужно не меньше 6 символов.');
+  if (c === 'email_not_confirmed') return L('Аккаунт ждёт подтверждения почты. Выключите Confirm email в настройках Supabase.');
   if (c === 'email_address_invalid' || c === 'validation_failed') return L('Проверьте адрес почты.');
   return L('Не получилось: ') + (e && (e.message || c));
 }
@@ -345,22 +348,21 @@ function wireCloud() {
     $('cl-out').onclick = async () => { await Sync.signOut(); setCloud(''); rewire(); };
     return;
   }
-  const errEl = $('cl-err'), email = () => $('cl-email').value.trim();
-  $('cl-send').onclick = async () => {
+  const errEl = $('cl-err'), email = () => $('cl-email').value.trim(), pass = () => $('cl-pass').value;
+  const go = async (fn, btn) => {
     errEl.textContent = '';
     if (!/^\S+@\S+\.\S+$/.test(email())) { errEl.textContent = L('Проверьте адрес почты.'); return; }
-    $('cl-send').disabled = true;
-    try { await Sync.requestCode(email()); $('cl-code-wrap').hidden = false; $('cl-send').textContent = L('Отправить код ещё раз'); errEl.textContent = L('Код отправлен. Проверьте почту, в том числе папку «Спам».'); $('cl-code').focus(); }
-    catch (e) { errEl.textContent = cloudError(e); }
-    finally { $('cl-send').disabled = false; }
+    if (pass().length < 6) { errEl.textContent = L('Пароль слишком простой: нужно не меньше 6 символов.'); return; }
+    btn.disabled = true;
+    try {
+      await fn(email(), pass());
+      G.log(S, L('Облачное сохранение подключено'), 'gold');
+      rewire(); await syncNow(true);
+      const st = $('cl-status'); if (st) st.textContent = cloudStatusText();
+    } catch (e) { errEl.textContent = cloudError(e); btn.disabled = false; }
   };
-  $('cl-verify').onclick = async () => {
-    const code = $('cl-code').value.replace(/\D/g, '');
-    if (code.length < 6) { errEl.textContent = L('Введите код из письма.'); return; }
-    $('cl-verify').disabled = true; errEl.textContent = '';
-    try { await Sync.verifyCode(email(), code); G.log(S, L('Облачное сохранение подключено'), 'gold'); rewire(); await syncNow(true); const st = $('cl-status'); if (st) st.textContent = cloudStatusText(); }
-    catch (e) { errEl.textContent = cloudError(e); $('cl-verify').disabled = false; }
-  };
+  $('cl-in').onclick = () => go(Sync.signIn, $('cl-in'));
+  $('cl-new').onclick = () => go(Sync.signUp, $('cl-new'));
 }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { if (pushTimer) pushNow(); }

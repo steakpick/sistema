@@ -1,4 +1,4 @@
-// Cloud save through Supabase: email code sign-in (no password) and one row per player.
+// Cloud save through Supabase: email + password account and one row per player.
 // Talks to the Supabase REST endpoints directly, so the app needs no extra library.
 export const SUPABASE_URL = 'https://qwvhvzyhwpdspzcfdmrj.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_hv7B4M7uH3KsN-OpS1q4Yg_0LlQ50qr'; // publishable: safe in the app, data is protected by row level security
@@ -62,21 +62,18 @@ async function ensureFresh() {
   return refreshing;
 }
 
-/** Send a sign-in code to this email. New emails get an account automatically. */
-export function requestCode(email) {
-  return call('/auth/v1/otp', { method: 'POST', body: { email, create_user: true } });
+/** Sign in with email and password. */
+export async function signIn(email, password) {
+  const s = await call('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } });
+  keep(s); setMeta({ syncedAt: null, lastOk: null });
+  return user();
 }
 
-/** Check the code from the email and keep the session. */
-export async function verifyCode(email, token) {
-  let s;
-  try { s = await call('/auth/v1/verify', { method: 'POST', body: { type: 'email', email, token } }); }
-  catch (e) {
-    if (e.code === 'offline' || e.code === 'rate_limit') throw e;
-    s = await call('/auth/v1/verify', { method: 'POST', body: { type: 'signup', email, token } }); // first sign-up code
-  }
-  keep(s);
-  setMeta({ syncedAt: null, lastOk: null });
+/** Create an account. Needs "Confirm email" switched off in Supabase, otherwise no session comes back. */
+export async function signUp(email, password) {
+  const s = await call('/auth/v1/signup', { method: 'POST', body: { email, password } });
+  if (!s || !s.access_token) throw new SyncError('email_not_confirmed');
+  keep(s); setMeta({ syncedAt: null, lastOk: null });
   return user();
 }
 
