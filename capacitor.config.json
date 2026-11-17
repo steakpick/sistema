@@ -1,0 +1,11 @@
+{
+  "appId": "io.github.steakpick.sistema",
+  "appName": "Система",
+  "webDir": "www",
+  "backgroundColor": "#04070e",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#04070e",
+    "scrollEnabled": false
+  }
+}
