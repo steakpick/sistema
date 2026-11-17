@@ -1,3 +1,4 @@
+import { nativeHaptic } from './native.js';
 // Synthesised System sounds and the iOS haptic tick. No audio files.
 let ac = null;
 let enabled = () => true;
@@ -36,6 +37,7 @@ export function sfx(kind) {
 
 /** iOS 18 Safari gives a haptic tick when a switch checkbox toggles inside a user gesture. */
 export function haptic() {
+  if (nativeHaptic()) return;
   try { document.getElementById('hap').click(); } catch (e) { /* ignore */ }
 }
 

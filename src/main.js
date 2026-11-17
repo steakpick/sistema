@@ -6,6 +6,7 @@ import { sfx, haptic, installUnlock, setSoundCheck } from './sound.js';
 import { RM, floatText, burst, flash, shake, setNum, changed, typeText } from './fx.js';
 import * as Sync from './sync.js';
 import { openSetup } from './setup.js';
+import { nativeKeepAwake } from './native.js';
 import * as P from './progress.js';
 
 const { STATS, TITLES, RANKS, DIFF, DAYS, ALL_DAYS, PENALTY } = G;
@@ -442,6 +443,7 @@ addEventListener('online', () => syncNow());
 /* ---------- timer for goals in minutes ---------- */
 let wake = null;
 async function keepAwake(on) {
+  if (nativeKeepAwake(on)) return;
   try {
     if (on && !wake && navigator.wakeLock && !document.hidden) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); }
     else if (!on && wake) { const w = wake; wake = null; await w.release(); }

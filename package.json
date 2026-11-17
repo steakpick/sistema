@@ -4,6 +4,19 @@
   "type": "module",
   "description": "Личное приложение саморазвития в стиле «Системы»",
   "scripts": {
-    "test": "TZ=Europe/Chisinau node --test tests/*.test.js"
+    "test": "TZ=Europe/Chisinau node --test tests/*.test.js",
+    "build:www": "node scripts/build-www.mjs",
+    "ios:sync": "node scripts/build-www.mjs && cap sync ios",
+    "ios:open": "cap open ios"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2"
+  },
+  "dependencies": {
+    "@capacitor-community/keep-awake": "^8.0.1",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.6.2",
+    "@capacitor/preferences": "^8.0.1"
   }
 }

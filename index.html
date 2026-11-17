@@ -12,9 +12,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Jura:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -157,7 +155,7 @@
 <div id="boot" hidden><div class="bt">[ СИСТЕМА ]</div><div class="bb"><i></i></div><div class="bl" id="boot-line"></div></div>
 <label class="hap" id="hap" aria-hidden="true"><input type="checkbox" switch tabindex="-1"></label>
 
-<script type="module" src="src/main.js"></script>
-<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
+<script type="module" src="src/boot.js"></script>
+<script>if('serviceWorker' in navigator&&!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
 </body>
 </html>
